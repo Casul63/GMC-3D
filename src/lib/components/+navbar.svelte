@@ -3,8 +3,12 @@
 </script>
 
 <nav class="fixed z-110 w-full bg-black flex justify-between px-3 md:px-6 h-15">
-    <div class="text-amber-50 self-center font-bold tracking-tighter uppercase">
-        Logo/Test
+    <div class="flex items-center h-full">
+        <img
+            src="/logo.png"
+            class="h-full w-auto object-contain py-2"
+            alt="Logo"
+        />
     </div>
 
     <div class="mr-2 my-2 flex gap-3">

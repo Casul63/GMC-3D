@@ -6,6 +6,7 @@
     import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
     import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
     import Modal from "$lib/components/+modal.svelte";
+    import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 
     const toolName = $derived(page.url.searchParams.get("tool") || "");
     let canvasContainer: HTMLDivElement;
@@ -150,7 +151,10 @@
                     class="w-20 h-20 rounded-2xl overflow-hidden border-2 transition-all"
                 >
                     <img
-                        src="/animations/{toolName}/{currentAnimName}.png"
+                        src="/animations/{toolName}/{currentAnimName.replaceAll(
+                            ' ',
+                            '_',
+                        )}.jpg"
                         alt={currentAnimName}
                         class="w-full h-full object-cover"
                     />
@@ -196,7 +200,9 @@
                         class="w-full aspect-square rounded-xl overflow-hidden bg-black/40"
                     >
                         <img
-                            src="/animations/{toolName}/{anim.name}.png"
+                            src="/animations/{toolName}/{anim.name
+                                .replaceAll(/\s+/g, '_')
+                                .replaceAll(/\d+/g, '')}.jpg"
                             alt={anim.name}
                             class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                             onerror={handleImageError}

@@ -118,29 +118,12 @@
         } else {
           console.warn("Tools group not found");
         }
-        const floor = gltf.scene.getObjectByName("Floor001");
-
-        const wall1 = gltf.scene.getObjectByName("Wall_1");
-        const wall2 = gltf.scene.getObjectByName("Wall_2");
-
-        const targetColor = "#0f9946";
-
-        [wall1, wall2].forEach((wall) => {
-          if (wall) {
-            wall.traverse((node) => {
-              if (node instanceof THREE.Mesh) {
-                node.material.envMapIntensity = 1;
-              }
-            });
-          }
-        });
-
         console.log("Tools:", _scene.getObjectByName("Tools")?.children);
         console.log("Struktur Model:");
         console.log(dumpObject(gltf.scene).join("\n"));
       },
-      (xhr) => {
-        console.log(`Loading: ${(xhr.loaded / xhr.total) * 100}%`);
+      (progress) => {
+        console.log(`Loading: ${(progress.loaded / progress.total) * 100}%`);
       },
       (error) => {
         console.error("Error loading model:", error);
@@ -189,7 +172,11 @@
   });
 
   function confirmSelection() {
-    goto(`/animations?tool=${encodeURIComponent(selectedToolName)}`);
+    goto(
+      `/animations?tool=${encodeURIComponent(
+        selectedToolName.replaceAll(/\d+/g, ""),
+      )}`,
+    );
   }
 
   function revealTools() {
@@ -424,7 +411,7 @@
             <input
               type="range"
               min="0"
-              max="4"
+              max="10"
               step="0.1"
               bind:value={config.brightness}
               class="w-full accent-red-600"
@@ -441,7 +428,7 @@
             <input
               type="range"
               min="0"
-              max="2"
+              max="10"
               step="0.1"
               bind:value={config.hemiIntensity}
               class="w-full accent-red-600"
