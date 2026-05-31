@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as THREE from "three";
   import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+  import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
   import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
   import { OrbitControls } from "three/addons/controls/OrbitControls.js";
   import { Reflector } from "three/examples/jsm/objects/Reflector.js";
@@ -12,7 +13,6 @@
   let config = $state({
     brightness: 1.5,
     hemiIntensity: 0.8,
-    showShadows: false,
     fov: 75,
   });
   let scene = $state<THREE.Scene | null>(null);
@@ -21,26 +21,29 @@
   let dirLight = $state<THREE.DirectionalLight | null>(null);
   let hemiLight = $state<THREE.HemisphereLight | null>(null);
   let camera = $state<THREE.PerspectiveCamera | null>(null);
-  let mouse = $state<THREE.Vector2 | null>(null);
+  let point = $state<THREE.Vector2 | null>(null);
   let raycaster = $state<THREE.Raycaster | null>(null);
   let controls: any = null;
 
   let canvasContainer: HTMLDivElement;
 
   let isHidden = $state(false);
-  let showModalA = $state(false);
-  let showModalB = $state(false);
+  let showRedirectAnimation = $state(false);
+  let showHideTool = $state(false);
   let showSettings = $state(false);
   let showHelp = $state(false);
-  let selectedToolName = $state("");
+  let lastSelectedToolName = $state("");
 
-  let lastSelectedGroup: THREE.Object3D | null = null;
+  let lastSelectedTool: THREE.Object3D | null = null;
+  const activePointers = new Map<
+    number,
+    { clientX: number; clientY: number }
+  >();
   let frameId: number;
 
   $effect(() => {
     if (dirLight) {
       dirLight.intensity = config.brightness;
-      dirLight.castShadow = config.showShadows;
     }
 
     if (hemiLight) {
@@ -55,6 +58,27 @@
 
   onMount(() => {
     const _scene = new THREE.Scene();
+
+    // const gradientCanvas = document.createElement("canvas");
+    // gradientCanvas.width = window.innerWidth;
+    // gradientCanvas.height = window.innerHeight;
+    // const context = gradientCanvas.getContext("2d");
+    // if (context) {
+    //   const gradient = context.createLinearGradient(
+    //     0,
+    //     0,
+    //     0,
+    //     gradientCanvas.height,
+    //   );
+    //   gradient.addColorStop(0, "#0391ff");
+    //   gradient.addColorStop(1, "#29a2ff");
+
+    //   context.fillStyle = gradient;
+    //   context.fillRect(0, 0, gradientCanvas.width, gradientCanvas.height);
+    // }
+    // const backgroundTexture = new THREE.CanvasTexture(gradientCanvas);
+    // _scene.background = backgroundTexture;
+
     const _renderer = new THREE.WebGLRenderer();
     const _camera = new THREE.PerspectiveCamera(
       75,
@@ -70,7 +94,7 @@
     const _dirLight = new THREE.DirectionalLight(0xffffff, config.brightness);
     const controls = new OrbitControls(_camera, _renderer.domElement);
     const _raycaster = new THREE.Raycaster();
-    const _mouse = new THREE.Vector2();
+    const _point = new THREE.Vector2();
 
     scene = _scene;
     renderer = _renderer;
@@ -78,12 +102,11 @@
     hemiLight = _hemiLight;
     dirLight = _dirLight;
     raycaster = _raycaster;
-    mouse = _mouse;
+    point = _point;
 
     scene.add(hemiLight);
     scene.add(dirLight);
     dirLight.position.set(5, 10, 5);
-    dirLight.castShadow = config.showShadows;
     dirLight.shadow.mapSize.set(1024, 1024);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -93,10 +116,6 @@
 
     canvasContainer.appendChild(renderer.domElement);
 
-    const preventContextMenu = (event: MouseEvent) => {
-      event.preventDefault();
-    };
-
     const hdrLoader = new HDRLoader();
     hdrLoader.load("/modern_evening_street_1k.hdr", (texture) => {
       texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -105,6 +124,9 @@
     });
 
     const loader = new GLTFLoader();
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath("/draco/");
+    loader.setDRACOLoader(dracoLoader);
     loader.load(
       "gym_restructured.glb",
       (gltf) => {
@@ -149,21 +171,29 @@
       return lines;
     }
 
-    const render = (time: number) => {
+    const renderLoop = () => {
       controls.update();
       _renderer.render(_scene, _camera);
     };
 
-    renderer.setAnimationLoop(render);
+    _renderer.setAnimationLoop(renderLoop);
 
-    window.addEventListener("mousedown", handlePointerDown);
+    _renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+    _renderer.domElement.addEventListener("pointerup", handlePointerUp);
+    _renderer.domElement.addEventListener("pointercancel", handlePointerUp);
     window.addEventListener("contextmenu", preventContextMenu);
     window.addEventListener("resize", handleResize);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("mousedown", handlePointerDown);
+      if (_renderer && _renderer.domElement) {
+        _renderer.domElement.removeEventListener(
+          "pointerdown",
+          handlePointerDown,
+        );
+        _renderer.domElement.removeEventListener("pointerup", handlePointerUp);
+      }
       window.removeEventListener("contextmenu", preventContextMenu);
+      window.removeEventListener("resize", handleResize);
 
       _renderer.setAnimationLoop(null);
       _renderer.dispose();
@@ -171,10 +201,14 @@
     };
   });
 
-  function confirmSelection() {
+  function preventContextMenu(event: MouseEvent) {
+    event.preventDefault();
+  }
+
+  function redirectAnimation() {
     goto(
       `/animations?tool=${encodeURIComponent(
-        selectedToolName.replaceAll(/\d+/g, ""),
+        lastSelectedToolName.replaceAll(/\d+/g, ""),
       )}`,
     );
   }
@@ -201,81 +235,148 @@
   }
 
   function hideVisible() {
-    if (lastSelectedGroup) {
-      lastSelectedGroup.visible = false;
+    if (lastSelectedTool) {
+      lastSelectedTool.visible = false;
       isHidden = true;
       clearCurrentHighlight();
-      lastSelectedGroup = null;
+      lastSelectedTool = null;
     }
   }
 
-  const handlePointerDown = (event: MouseEvent) => {
-    if ((event.target as HTMLElement).tagName !== "CANVAS") {
-      return;
+  function getEventCoordinates(event: PointerEvent) {
+    const isTouch = event.pointerType === "touch";
+
+    if (isTouch) {
+      activePointers.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
     }
-    if (renderer && mouse && raycaster && camera && scene) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(scene.children, true);
 
-      if (intersects.length > 0) {
-        const intersectedObject = intersects[0].object;
-        let foundGroup: THREE.Object3D | null = null;
+    if (isTouch && activePointers.size === 2) {
+      const coords = Array.from(activePointers.values());
+      return {
+        clientX: (coords[0].clientX + coords[1].clientX) / 2,
+        clientY: (coords[0].clientY + coords[1].clientY) / 2,
+        isTouch,
+        touchCount: 2,
+      };
+    }
 
-        if (intersectedObject.parent?.name === "Tools") {
-          foundGroup = intersectedObject;
-        } else {
-          intersectedObject.traverseAncestors((ancestor) => {
-            if (ancestor.parent?.name === "Tools") {
-              foundGroup = ancestor;
-            }
-          });
+    return {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      isTouch,
+      touchCount: isTouch ? activePointers.size : 1,
+    };
+  }
+
+  function handleToolRaycast(
+    clientX: number,
+    clientY: number,
+  ): THREE.Object3D | null {
+    if (!renderer || !point || !raycaster || !camera || !scene) return null;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    point.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    point.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(point, camera);
+    const intersects = raycaster.intersectObjects(scene.children, true);
+
+    if (intersects.length > 0) {
+      const intersectedObject = intersects[0].object;
+
+      if (intersectedObject.parent?.name === "Tools") {
+        return intersectedObject;
+      }
+
+      let foundTool: THREE.Object3D | null = null;
+      intersectedObject.traverseAncestors((tool) => {
+        if (tool.parent?.name === "Tools") {
+          foundTool = tool;
         }
+      });
+      return foundTool;
+    }
+    return null;
+  }
 
-        if (foundGroup) {
-          const group = foundGroup as THREE.Group;
-          const groupName = group.name;
+  function handleHighlight(group: THREE.Group) {
+    clearCurrentHighlight();
 
-          if (lastSelectedGroup === group) {
-            selectedToolName = groupName;
-            if (event.button === 0) {
-              showModalA = true;
-              console.log("Modal A open:", groupName);
-            } else if (event.button === 2) {
-              showModalB = true;
-              console.log("Modal B open:", groupName);
-            }
-          } else {
-            clearCurrentHighlight();
+    group.traverse((node) => {
+      if (node instanceof THREE.Mesh) {
+        if (!node.material._isCloned) {
+          node.material = node.material.clone();
+          node.material._isCloned = true;
+        }
+        const mat = node.material as THREE.MeshStandardMaterial;
+        mat.emissive?.setRGB(0.96, 0.58, 0.16);
+        mat.emissiveIntensity = 0.8;
+      }
+    });
+    lastSelectedTool = group;
+  }
 
-            group.traverse((node) => {
-              if (node instanceof THREE.Mesh) {
-                if (!node.material._isCloned) {
-                  node.material = node.material.clone();
-                  node.material._isCloned = true;
-                }
-                const mat = node.material as THREE.MeshStandardMaterial;
-                mat.emissive?.setRGB(0.96, 0.58, 0.16);
-                mat.emissiveIntensity = 0.8;
-              }
-            });
-            lastSelectedGroup = group;
-          }
+  function handleModalType(group: THREE.Group, buttonType: number) {
+    lastSelectedToolName = group.name;
+
+    if (buttonType === 0) {
+      showRedirectAnimation = true;
+      console.log("Modal Redirect Animation open:", lastSelectedToolName);
+    } else if (buttonType === 2) {
+      showHideTool = true;
+      console.log("Modal Hide Tool open:", lastSelectedToolName);
+    }
+  }
+
+  function handlePointerDown(event: PointerEvent) {
+    const target = event.target as HTMLElement;
+    if (target.tagName !== "CANVAS") return;
+
+    const { clientX, clientY, isTouch, touchCount } =
+      getEventCoordinates(event);
+
+    function executeInteraction(button?: number) {
+      const foundGroup = handleToolRaycast(clientX, clientY);
+
+      if (foundGroup) {
+        const group = foundGroup as THREE.Group;
+        const buttonType = isTouch ? button : event.button;
+
+        if (lastSelectedTool === group) {
+          handleModalType(group, buttonType!);
         } else {
+          handleHighlight(group);
+        }
+      } else {
+        if (touchCount <= 1) {
           clearCurrentHighlight();
-          lastSelectedGroup = null;
-          showModalA = false;
-          showModalB = false;
+          lastSelectedTool = null;
+          showRedirectAnimation = false;
+          showHideTool = false;
         }
       }
     }
-  };
+
+    if (!isTouch) {
+      executeInteraction();
+    } else {
+      if (touchCount === 2) {
+        executeInteraction(2);
+      } else if (touchCount === 1) {
+        executeInteraction(0);
+      }
+    }
+  }
+
+  function handlePointerUp(event: PointerEvent) {
+    activePointers.delete(event.pointerId);
+  }
 
   function clearCurrentHighlight() {
-    if (lastSelectedGroup) {
-      lastSelectedGroup.traverse((node) => {
+    if (lastSelectedTool) {
+      lastSelectedTool.traverse((node) => {
         if (node instanceof THREE.Mesh) {
           const mat = node.material as THREE.MeshStandardMaterial;
 
@@ -299,7 +400,13 @@
   >
     ?
   </button>
-  <Modal isOpen={showHelp} onClose={() => (showHelp = false)} title="HELP">
+  <Modal
+    isOpen={showHelp}
+    onClose={() => {
+      showHelp = false;
+    }}
+    title="HELP"
+  >
     <h2 class="text-center text-4xl font-bold text-red-500">DISCLAIMER</h2>
     <p class=" text-justify text-xl font-bold text-red-500 mt-2">
       Ruangan dan alat yang ditampilkan hanyalah ilustrasi dan mungkin tidak
@@ -457,71 +564,53 @@
               class="w-full accent-red-600"
             />
           </div>
-
-          <div class="flex flex-col gap-3">
-            <label
-              class="flex items-center justify-between cursor-pointer group"
-            >
-              <span
-                class="text-xs text-black group-hover:text-white transition-colors"
-                >Enable Shadows</span
-              >
-
-              <input
-                type="checkbox"
-                bind:checked={config.showShadows}
-                class="w-4 h-4 accent-red-600"
-              />
-            </label>
-
-            <label
-              class="flex items-center justify-between cursor-pointer group"
-            >
-              <span
-                class="text-xs text-black group-hover:text-white transition-colors"
-                >Auto Rotate</span
-              >
-            </label>
-          </div>
         </section>
       </div>
     </div>
   {/if}
 </div>
 
-<Modal isOpen={showModalA} title="" onClose={() => (showModalA = false)}>
+<Modal
+  isOpen={showRedirectAnimation}
+  title=""
+  onClose={() => (showRedirectAnimation = false)}
+>
   <h2 class="text-center text-4xl font-bold text-black">LIHAT ANIMASI?</h2>
 
   <div class="flex justify-between gap-8 mt-4 px-4">
     <button
-      onclick={confirmSelection}
+      onclick={redirectAnimation}
       class="bg-black w-full font-bold text-2xl rounded-sm text-white"
       >YA</button
     >
 
     <button
-      onclick={() => (showModalA = false)}
+      onclick={() => (showRedirectAnimation = false)}
       class="bg-white w-full font-bold text-2xl rounded-sm border-4 border-black"
       >TIDAK</button
     >
   </div>
 </Modal>
 
-<Modal isOpen={showModalB} title="HIDE" onClose={() => (showModalB = false)}>
+<Modal
+  isOpen={showHideTool}
+  title="HIDE"
+  onClose={() => (showHideTool = false)}
+>
   <h2 class="text-center text-4xl font-bold text-black">SEMBUNYIKAN ALAT?</h2>
 
   <div class="flex justify-between gap-8 mt-4 px-4">
     <button
       onclick={() => {
         hideVisible();
-        showModalB = false;
+        showHideTool = false;
       }}
       class="bg-black w-full font-bold text-2xl rounded-sm text-white"
       >YA</button
     >
 
     <button
-      onclick={() => (showModalB = false)}
+      onclick={() => (showHideTool = false)}
       class="bg-white w-full font-bold text-2xl rounded-sm border-4 border-black"
       >TIDAK</button
     >

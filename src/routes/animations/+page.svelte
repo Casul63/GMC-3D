@@ -4,6 +4,7 @@
     import * as THREE from "three";
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+    import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
     import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
     import Modal from "$lib/components/+modal.svelte";
     import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
@@ -14,7 +15,7 @@
     let showModalHelp = $state(false);
 
     let isPlaying = $state(false);
-    let currentAnimName = $state("");
+    let currentAnimationName = $state("");
     let thumbStartIndex = $state(0);
 
     let animationsList = $state<THREE.AnimationClip[]>([]);
@@ -24,7 +25,7 @@
     let currentAction: THREE.AnimationAction | null = null;
     const loader = new GLTFLoader();
 
-    function playAction(clip: THREE.AnimationClip) {
+    function changeAnimation(clip: THREE.AnimationClip) {
         if (!mixer) return;
 
         mixer.stopAllAction();
@@ -35,20 +36,20 @@
         currentAction.setEffectiveTimeScale(1);
 
         currentAction.play();
-        currentAnimName = clip.name;
-        isPlaying = true;
-        currentAction.paused = false;
+        currentAction.paused = true;
+        isPlaying = false;
+        currentAnimationName = clip.name;
     }
 
     function selectAnimation(clip: THREE.AnimationClip) {
-        playAction(clip);
+        changeAnimation(clip);
         showModalAnim = false;
     }
 
     function toggleAnimation() {
         if (!currentAction) return;
+        currentAction.paused = isPlaying;
         isPlaying = !isPlaying;
-        currentAction.paused = !isPlaying;
     }
 
     function handleImageError(e: Event) {
@@ -57,14 +58,33 @@
     }
 
     onMount(() => {
-        // 1. Renderer & Scene Setup
+        scene = new THREE.Scene();
+        // scene.background = new THREE.Color("rgb(82, 82, 82)");
+
+        const gradientCanvas = document.createElement("canvas");
+        gradientCanvas.width = window.innerWidth;
+        gradientCanvas.height = window.innerHeight;
+        const context = gradientCanvas.getContext("2d");
+        if (context) {
+            const gradient = context.createLinearGradient(
+                0,
+                0,
+                0,
+                gradientCanvas.height,
+            );
+            gradient.addColorStop(0, "#015494");
+            gradient.addColorStop(1, "#0090ff");
+
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, gradientCanvas.width, gradientCanvas.height);
+        }
+        const backgroundTexture = new THREE.CanvasTexture(gradientCanvas);
+        scene.background = backgroundTexture;
+
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         canvasContainer.appendChild(renderer.domElement);
-
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color("rgb(82, 82, 82)");
 
         const camera = new THREE.PerspectiveCamera(
             75,
@@ -72,7 +92,8 @@
             0.1,
             1000,
         );
-        camera.position.set(0, 2, 5);
+        // camera.rotation.y = Math.PI / 2;
+        camera.position.set(0, 2, 2);
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
@@ -94,7 +115,7 @@
                 console.log(animationsList);
 
                 if (animationsList.length > 0) {
-                    playAction(animationsList[0]);
+                    changeAnimation(animationsList[0]);
                     if (currentAction) currentAction.paused = true;
                     isPlaying = false;
                 }
@@ -135,7 +156,7 @@
     >
         <div class="pointer-events-auto">
             <button
-                class="bg-white m-auto w-12 h-12 rounded-full border-3 border-black text-2xl font-extrabold hover:w-16 hover:h-16 hover:text-4xl transition-all"
+                class="bg-white m-auto w-12 h-12 pb-1 rounded-full border-3 border-black text-2xl font-extrabold hover:w-16 hover:h-16 hover:text-4xl transition-all"
                 onclick={() => window.history.back()}
             >
                 ←
@@ -144,18 +165,18 @@
 
         <button
             onclick={() => (showModalAnim = true)}
-            class="pointer-events-auto flex flex-col items-center bg-red-500 p-2 rounded-3xl border border-white/10 h-fit gap-4"
+            class="pointer-events-auto flex flex-col items-center rounded-3xl h-fit gap-4 hover:scale-125 transition-transform"
         >
             <div class="flex flex-col gap-4">
                 <div
-                    class="w-20 h-20 rounded-2xl overflow-hidden border-2 transition-all"
+                    class="w-30 h-30 rounded-3xl border-6 border-black overflow-hidden transition-all"
                 >
                     <img
-                        src="/animations/{toolName}/{currentAnimName.replaceAll(
+                        src="/animations/{toolName}/{currentAnimationName.replaceAll(
                             ' ',
                             '_',
                         )}.jpg"
-                        alt={currentAnimName}
+                        alt={currentAnimationName}
                         class="w-full h-full object-cover"
                     />
                 </div>
@@ -167,11 +188,11 @@
         class="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-4 pointer-events-none"
     >
         <div
-            class="bg-black/60 backdrop-blur-md px-6 py-2 rounded-full border border-white/10"
+            class="bg-black backdrop-blur-md px-6 py-2 rounded-full border border-white/10"
         >
             <h1 class="text-white font-bold tracking-widest uppercase text-sm">
                 <span class="text-red-400 ml-2"
-                    >{currentAnimName.replace("_", " ")}</span
+                    >{currentAnimationName.replaceAll("_", " ")}</span
                 >
             </h1>
         </div>
@@ -194,7 +215,7 @@
             {#each animationsList as anim}
                 <button
                     onclick={() => selectAnimation(anim)}
-                    class="group flex flex-col items-center gap-2 p-3 rounded-2xl border border-white/5 hover:border-red-500/50 hover:bg-red-500/5 transition-all bg-white/5"
+                    class="group flex flex-col items-center gap-2 p-3 rounded-2xl border-4 border-black hover:border-red-500 hover:bg-red-500/5 transition-all bg-white/5"
                 >
                     <div
                         class="w-full aspect-square rounded-xl overflow-hidden bg-black/40"
@@ -209,7 +230,7 @@
                         />
                     </div>
                     <span
-                        class="text-[10px] font-bold uppercase tracking-tighter text-white/60 group-hover:text-red-400 text-center line-clamp-2"
+                        class="text-lg font-bold uppercase tracking-tighter text-black group-hover:text-red-400 text-center line-clamp-2"
                     >
                         {anim.name.replaceAll("_", " ")}
                     </span>

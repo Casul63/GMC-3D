@@ -24,17 +24,6 @@
             class="relative mt-12 w-full max-w-4xl bg-zinc-50 border border-black/20 rounded-xl p-4 shadow-2xl flex flex-col"
             onclick={(e) => e.stopPropagation()}
         >
-            <!-- <div class="flex justify-between items-center">
-                <h2
-                    class="text-black text-xl font-bold tracking-wider uppercase"
-                >
-                    {title}
-                </h2>
-                <button
-                    onclick={onClose}
-                    class="text-black hover:text-white text-2xl">✕</button
-                >
-            </div> -->
             <div
                 class="modal-body overflow-y-auto custom-scroll"
                 style="max-height: 60vh;"
