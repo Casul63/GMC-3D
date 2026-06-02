@@ -391,8 +391,6 @@
   }
 </script>
 
-<Navbar></Navbar>
-
 <div class="fixed top-18 left-6 z-100 flex flex-col items-end">
   <button
     onclick={() => (showHelp = !showHelp)}

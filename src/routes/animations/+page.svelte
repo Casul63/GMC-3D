@@ -187,10 +187,10 @@
     <div
         class="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-4 pointer-events-none"
     >
-        <div
-            class="bg-black backdrop-blur-md px-6 py-2 rounded-full border border-white/10"
-        >
-            <h1 class="text-white font-bold tracking-widest uppercase text-sm">
+        <div class="bg-black backdrop-blur-md px-6 py-2 rounded-full border">
+            <h1
+                class="text-white text-center font-bold tracking-widest uppercase text-sm"
+            >
                 <span class="text-red-400 ml-2"
                     >{currentAnimationName.replaceAll("_", " ")}</span
                 >
