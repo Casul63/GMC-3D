@@ -176,7 +176,7 @@
 
     _renderer.setAnimationLoop(renderLoop);
 
-    _renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+    _renderer.domElement.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("contextmenu", preventContextMenu);
     window.addEventListener("resize", handleResize);
 
@@ -184,6 +184,10 @@
       if (_renderer) {
         _renderer.setAnimationLoop(null);
         if (_renderer.domElement && _renderer.domElement.parentNode) {
+          _renderer.domElement.removeEventListener(
+            "pointerup",
+            handlePointerUp,
+          );
           _renderer.domElement.parentNode.removeChild(_renderer.domElement);
         }
         _renderer.dispose();
@@ -287,21 +291,24 @@
     lastSelectedTool = group;
   }
 
-  function handlePointerDown(event: PointerEvent) {
+  function handlePointerUp(event: PointerEvent) {
     const target = event.target as HTMLElement;
     if (target.tagName !== "CANVAS") return;
-
     const foundGroup = handleToolRaycast(event.clientX, event.clientY);
 
     if (foundGroup) {
       const group = foundGroup as THREE.Group;
       if (lastSelectedTool === group) {
-        lastSelectedToolName = group.name;
-        showModal = true;
+        setTimeout(() => {
+          showModal = true;
+        }, 30);
       }
+
       handleHighlight(group);
+      lastSelectedToolName = group.name;
     } else {
       clearCurrentHighlight();
+      lastSelectedTool = null;
     }
   }
 
