@@ -82,7 +82,7 @@
   </div>
 
   <div class="flex flex-col px-6 md:px-32 py-8 md:py-16 gap-6 md:gap-24 h-auto">
-    <div class="flex flex-col md:flex-row gap-6 h-auto md:h-100">
+    <div class="flex flex-col md:flex-row gap-6 md:gap-12 h-auto md:h-100">
       <div class="w-full md:w-2/3 z-10">
         <img
           src="/home_3.png"
