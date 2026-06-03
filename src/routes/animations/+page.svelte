@@ -7,7 +7,6 @@
     import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
     import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
     import Modal from "$lib/components/+modal.svelte";
-    import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 
     const toolName = $derived(page.url.searchParams.get("tool") || "");
     let canvasContainer: HTMLDivElement;
@@ -141,11 +140,13 @@
         };
         window.addEventListener("resize", handleResize);
 
-        $inspect(animationsList);
         return () => {
+            if (renderer.domElement && renderer.domElement.parentNode) {
+                renderer.domElement.parentNode.removeChild(renderer.domElement);
+            }
+            renderer.dispose();
             window.removeEventListener("resize", handleResize);
             cancelAnimationFrame(frameId);
-            renderer.dispose();
         };
     });
 </script>
@@ -155,12 +156,12 @@
         class="absolute inset-0 z-10 pointer-events-none p-6 flex justify-between"
     >
         <div class="pointer-events-auto">
-            <button
-                class="bg-white m-auto w-12 h-12 pb-1 rounded-full border-3 border-black text-2xl font-extrabold hover:w-16 hover:h-16 hover:text-4xl transition-all"
-                onclick={() => window.history.back()}
+            <a
+                href="/model"
+                class="flex pb-1 items-center justify-center bg-white m-auto w-12 h-12 rounded-full border-3 border-black text-2xl font-extrabold hover:scale-125 transition-all duration-300 transform"
             >
                 ←
-            </button>
+            </a>
         </div>
 
         <button
@@ -185,7 +186,7 @@
     </div>
 
     <div
-        class="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-4 pointer-events-none"
+        class="absolute bottom-20 md:bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-4 pointer-events-none"
     >
         <div class="bg-black backdrop-blur-md px-6 py-2 rounded-full border">
             <h1
@@ -197,7 +198,10 @@
             </h1>
         </div>
 
-        <button class="play-btn pointer-events-auto" onclick={toggleAnimation}>
+        <button
+            class="bg-white text-black border-4 border-black py-3.5 px-10 rounded-full font-black text-lg tracking-wider transition-all duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:scale-105 hover:-translate-y-1 pointer-events-auto"
+            onclick={toggleAnimation}
+        >
             {isPlaying ? "⏸" : "▶"}
         </button>
     </div>
@@ -239,37 +243,3 @@
         </div>
     </Modal>
 </div>
-
-<style>
-    :global(body) {
-        margin: 0;
-        background: black;
-    }
-    .btn-secondary {
-        background: rgba(255, 255, 255, 0.1);
-        color: white;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        padding: 10px 20px;
-        border-radius: 12px;
-        font-size: 0.8rem;
-        font-weight: bold;
-        transition: all 0.2s;
-        backdrop-filter: blur(10px);
-    }
-    .play-btn {
-        background: white;
-        color: black;
-        border: 4px solid black;
-        padding: 14px 40px;
-        border-radius: 100px;
-        font-weight: 900;
-        font-size: 1.1rem;
-        letter-spacing: 1px;
-        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    }
-    .play-btn:hover {
-        transform: scale(1.05) translateY(-5px);
-        /* background: ; */
-    }
-</style>

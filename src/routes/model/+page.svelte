@@ -30,15 +30,13 @@
   let isHidden = $state(false);
   let showRedirectAnimation = $state(false);
   let showHideTool = $state(false);
+  let showModal = $state(false);
   let showSettings = $state(false);
   let showHelp = $state(false);
   let lastSelectedToolName = $state("");
 
   let lastSelectedTool: THREE.Object3D | null = null;
-  const activePointers = new Map<
-    number,
-    { clientX: number; clientY: number }
-  >();
+
   let frameId: number;
 
   $effect(() => {
@@ -179,18 +177,16 @@
     _renderer.setAnimationLoop(renderLoop);
 
     _renderer.domElement.addEventListener("pointerdown", handlePointerDown);
-    _renderer.domElement.addEventListener("pointerup", handlePointerUp);
-    _renderer.domElement.addEventListener("pointercancel", handlePointerUp);
     window.addEventListener("contextmenu", preventContextMenu);
     window.addEventListener("resize", handleResize);
 
     return () => {
-      if (_renderer && _renderer.domElement) {
-        _renderer.domElement.removeEventListener(
-          "pointerdown",
-          handlePointerDown,
-        );
-        _renderer.domElement.removeEventListener("pointerup", handlePointerUp);
+      if (_renderer) {
+        _renderer.setAnimationLoop(null);
+        if (_renderer.domElement && _renderer.domElement.parentNode) {
+          _renderer.domElement.parentNode.removeChild(_renderer.domElement);
+        }
+        _renderer.dispose();
       }
       window.removeEventListener("contextmenu", preventContextMenu);
       window.removeEventListener("resize", handleResize);
@@ -206,6 +202,7 @@
   }
 
   function redirectAnimation() {
+    showModal = false;
     goto(
       `/animations?tool=${encodeURIComponent(
         lastSelectedToolName.replaceAll(/\d+/g, ""),
@@ -241,34 +238,6 @@
       clearCurrentHighlight();
       lastSelectedTool = null;
     }
-  }
-
-  function getEventCoordinates(event: PointerEvent) {
-    const isTouch = event.pointerType === "touch";
-
-    if (isTouch) {
-      activePointers.set(event.pointerId, {
-        clientX: event.clientX,
-        clientY: event.clientY,
-      });
-    }
-
-    if (isTouch && activePointers.size === 2) {
-      const coords = Array.from(activePointers.values());
-      return {
-        clientX: (coords[0].clientX + coords[1].clientX) / 2,
-        clientY: (coords[0].clientY + coords[1].clientY) / 2,
-        isTouch,
-        touchCount: 2,
-      };
-    }
-
-    return {
-      clientX: event.clientX,
-      clientY: event.clientY,
-      isTouch,
-      touchCount: isTouch ? activePointers.size : 1,
-    };
   }
 
   function handleToolRaycast(
@@ -318,60 +287,22 @@
     lastSelectedTool = group;
   }
 
-  function handleModalType(group: THREE.Group, buttonType: number) {
-    lastSelectedToolName = group.name;
-
-    if (buttonType === 0) {
-      showRedirectAnimation = true;
-      console.log("Modal Redirect Animation open:", lastSelectedToolName);
-    } else if (buttonType === 2) {
-      showHideTool = true;
-      console.log("Modal Hide Tool open:", lastSelectedToolName);
-    }
-  }
-
   function handlePointerDown(event: PointerEvent) {
     const target = event.target as HTMLElement;
     if (target.tagName !== "CANVAS") return;
 
-    const { clientX, clientY, isTouch, touchCount } =
-      getEventCoordinates(event);
+    const foundGroup = handleToolRaycast(event.clientX, event.clientY);
 
-    function executeInteraction(button?: number) {
-      const foundGroup = handleToolRaycast(clientX, clientY);
-
-      if (foundGroup) {
-        const group = foundGroup as THREE.Group;
-        const buttonType = isTouch ? button : event.button;
-
-        if (lastSelectedTool === group) {
-          handleModalType(group, buttonType!);
-        } else {
-          handleHighlight(group);
-        }
-      } else {
-        if (touchCount <= 1) {
-          clearCurrentHighlight();
-          lastSelectedTool = null;
-          showRedirectAnimation = false;
-          showHideTool = false;
-        }
+    if (foundGroup) {
+      const group = foundGroup as THREE.Group;
+      if (lastSelectedTool === group) {
+        lastSelectedToolName = group.name;
+        showModal = true;
       }
-    }
-
-    if (!isTouch) {
-      executeInteraction();
+      handleHighlight(group);
     } else {
-      if (touchCount === 2) {
-        executeInteraction(2);
-      } else if (touchCount === 1) {
-        executeInteraction(0);
-      }
+      clearCurrentHighlight();
     }
-  }
-
-  function handlePointerUp(event: PointerEvent) {
-    activePointers.delete(event.pointerId);
   }
 
   function clearCurrentHighlight() {
@@ -568,61 +499,26 @@
   {/if}
 </div>
 
-<Modal
-  isOpen={showRedirectAnimation}
-  title=""
-  onClose={() => (showRedirectAnimation = false)}
->
-  <h2 class="text-center text-4xl font-bold text-black">LIHAT ANIMASI?</h2>
+<Modal isOpen={showModal} title="" onClose={() => (showModal = false)}>
+  <button
+    onclick={() => (showModal = false)}
+    class=" bg-white border-3 border-black w-10 h-10 rounded-md pb-1 mx-auto hover:bg-black hover:text-white transition-all shadow-md cursor-pointer"
+    aria-label="Close modal"
+    >x
+  </button>
+  <div class="flex justify-between gap-4 mt-4 h-30 md:h-60">
+    <button
+      onclick={hideVisible}
+      class="bg-black w-full font-bold text-md md:text-5xl rounded-sm hover:bg-red-700 text-white transition-all hover:text-black"
+      >SEMBUNYIKAN <br />ALAT?</button
+    >
 
-  <div class="flex justify-between gap-8 mt-4 px-4">
     <button
       onclick={redirectAnimation}
-      class="bg-black w-full font-bold text-2xl rounded-sm text-white"
-      >YA</button
-    >
-
-    <button
-      onclick={() => (showRedirectAnimation = false)}
-      class="bg-white w-full font-bold text-2xl rounded-sm border-4 border-black"
-      >TIDAK</button
+      class="bg-white w-full font-bold text-md md:text-5xl rounded-sm border-4 hover:border-red-700 hover:bg-red-700 hover:text-white transition-all border-black"
+      >LIHAT <br />ANIMASI?</button
     >
   </div>
 </Modal>
 
-<Modal
-  isOpen={showHideTool}
-  title="HIDE"
-  onClose={() => (showHideTool = false)}
->
-  <h2 class="text-center text-4xl font-bold text-black">SEMBUNYIKAN ALAT?</h2>
-
-  <div class="flex justify-between gap-8 mt-4 px-4">
-    <button
-      onclick={() => {
-        hideVisible();
-        showHideTool = false;
-      }}
-      class="bg-black w-full font-bold text-2xl rounded-sm text-white"
-      >YA</button
-    >
-
-    <button
-      onclick={() => (showHideTool = false)}
-      class="bg-white w-full font-bold text-2xl rounded-sm border-4 border-black"
-      >TIDAK</button
-    >
-  </div>
-</Modal>
-
-<div bind:this={canvasContainer}></div>
-
-<style>
-  :global(body) {
-    margin: 0;
-
-    padding: 0;
-
-    overflow: hidden;
-  }
-</style>
+<div bind:this={canvasContainer} class="overflow-hidden"></div>
