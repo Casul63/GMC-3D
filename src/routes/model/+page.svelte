@@ -349,17 +349,10 @@
       100% sesuai dengan kondisi aslinya
     </p>
     <ul class="list-disc pl-5 mt-2 text-justify">
+      <li>Tekan salah satu alat untuk memberi highlight pada alat tersebut</li>
       <li>
-        Tekan (mobile) / klik kiri (desktop) salah satu alat untuk memberi
-        highlight pada alat tersebut
-      </li>
-      <li>
-        Tekan (mobile) / klik kiri (desktop) pada alat yang memiliki highlight
-        untuk melihat animasi penggunaan alat yang tersebut
-      </li>
-      <li>
-        Tekan dan tahan (mobile) / klik kanan (desktop) pada alat yang memiliki
-        highlight untuk menyembunyikan alat tersebut
+        Tekan alat yang memiliki highlight untuk melihat modal dengan pilihan
+        "sembunyikan alat?" dan "lihat animasi?"
       </li>
       <li>
         Tekan ikon visibilitas untuk menampilkan kembali alat yang tersembunyi
@@ -515,7 +508,10 @@
   </button>
   <div class="flex justify-between gap-4 mt-4 h-30 md:h-60">
     <button
-      onclick={hideVisible}
+      onclick={() => {
+        hideVisible();
+        showModal = false;
+      }}
       class="bg-black w-full font-bold text-md md:text-5xl rounded-sm hover:bg-red-700 text-white transition-all hover:text-black"
       >SEMBUNYIKAN <br />ALAT?</button
     >

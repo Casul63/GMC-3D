@@ -49,7 +49,7 @@
       />
     </div>
     <div
-      class="bg-black w-full md:w-1/3 h-64 md:h-full rounded-2xl p-5 md:p-8 z-10"
+      class="bg-black w-full md:w-1/3 h-40 md:h-full rounded-2xl p-5 md:p-8 z-10"
     >
       <h1 class="text-rose-700 text-4xl md:text-5xl font-bold font-sans">
         GMC <br class="hidden md:inline" /> FITNESS
