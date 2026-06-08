@@ -39,6 +39,9 @@
 
   let frameId: number;
 
+  let isLoadingModel = $state(true);
+  let loadingProgressText = $state("0%");
+
   $effect(() => {
     if (dirLight) {
       dirLight.intensity = config.brightness;
@@ -91,6 +94,7 @@
     );
     const _dirLight = new THREE.DirectionalLight(0xffffff, config.brightness);
     const controls = new OrbitControls(_camera, _renderer.domElement);
+    controls.enableDamping = true;
     const _raycaster = new THREE.Raycaster();
     const _point = new THREE.Vector2();
 
@@ -141,12 +145,20 @@
         console.log("Tools:", _scene.getObjectByName("Tools")?.children);
         console.log("Struktur Model:");
         console.log(dumpObject(gltf.scene).join("\n"));
+
+        isLoadingModel = false;
       },
       (progress) => {
-        console.log(`Loading: ${(progress.loaded / progress.total) * 100}%`);
+        if (progress.total > 0) {
+          const percent = Math.round((progress.loaded / progress.total) * 100);
+          loadingProgressText = `${percent}%`;
+        } else {
+          loadingProgressText = "Memproses aset...";
+        }
       },
       (error) => {
         console.error("Error loading model:", error);
+        loadingProgressText = "Gagal memuat model 3D.";
       },
     );
 
@@ -428,6 +440,27 @@
       </svg>
     </button>
   </div>
+
+  <Modal isOpen={isLoadingModel} onClose={() => (isLoadingModel = false)}>
+    <div class="inset-0 flex flex-col items-center justify-center py-2">
+      <div
+        class="w-16 h-16 border-4 border-t-red-600 border-r-transparent border-b-red-600 border-l-transparent rounded-full animate-spin mb-4"
+      ></div>
+
+      <h3
+        class="text-white text-2xl font-black tracking-widest uppercase animate-pulse"
+      >
+        Loading Ruangan Gym
+      </h3>
+      <p class="text-red-500 font-mono text-xl font-bold">
+        {loadingProgressText}
+      </p>
+
+      <span class="text-gray-400 text-xs mt-6 max-w-xs text-center">
+        Download / Rendering Model. Harap Tunggu Sebentar
+      </span>
+    </div></Modal
+  >
 
   {#if showSettings}
     <div

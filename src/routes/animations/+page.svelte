@@ -24,6 +24,9 @@
     let currentAction: THREE.AnimationAction | null = null;
     const loader = new GLTFLoader();
 
+    let isLoadingAnimasi = $state(true);
+    let loadingProgressText = $state("0%");
+
     function changeAnimation(clip: THREE.AnimationClip) {
         if (!mixer) return;
 
@@ -106,19 +109,33 @@
         if (toolName) {
             const modelPath = `/animations/${toolName}/${toolName}.glb`;
 
-            loader.load(modelPath, (gltf) => {
-                scene.add(gltf.scene);
-                mixer = new THREE.AnimationMixer(gltf.scene);
+            loader.load(
+                modelPath,
+                (gltf) => {
+                    scene.add(gltf.scene);
+                    mixer = new THREE.AnimationMixer(gltf.scene);
 
-                animationsList = gltf.animations;
-                console.log(animationsList);
+                    animationsList = gltf.animations;
+                    console.log(animationsList);
 
-                if (animationsList.length > 0) {
-                    changeAnimation(animationsList[0]);
-                    if (currentAction) currentAction.paused = true;
-                    isPlaying = false;
-                }
-            });
+                    if (animationsList.length > 0) {
+                        changeAnimation(animationsList[0]);
+                        if (currentAction) currentAction.paused = true;
+                        isPlaying = false;
+                    }
+                    isLoadingAnimasi = false;
+                },
+                (progress) => {
+                    if (progress.total > 0) {
+                        const percent = Math.round(
+                            (progress.loaded / progress.total) * 100,
+                        );
+                        loadingProgressText = `${percent}%`;
+                    } else {
+                        loadingProgressText = "Memproses aset...";
+                    }
+                },
+            );
         }
 
         const timer = new THREE.Timer();
@@ -150,6 +167,27 @@
         };
     });
 </script>
+
+<Modal isOpen={isLoadingAnimasi} onClose={() => (isLoadingAnimasi = false)}>
+    <div class="inset-0 flex flex-col items-center justify-center py-2">
+        <div
+            class="w-16 h-16 border-4 border-t-red-600 border-r-transparent border-b-red-600 border-l-transparent rounded-full animate-spin mb-4"
+        ></div>
+
+        <h3
+            class="text-white text-2xl font-black tracking-widest uppercase animate-pulse"
+        >
+            Loading Animasi
+        </h3>
+        <p class="text-red-500 font-mono text-xl font-bold">
+            {loadingProgressText}
+        </p>
+
+        <span class="text-gray-400 text-xs mt-6 max-w-xs text-center">
+            Download / Rendering Animasi. Harap Tunggu Sebentar
+        </span>
+    </div></Modal
+>
 
 <div class="relative w-full h-screen overflow-hidden bg-black">
     <div
