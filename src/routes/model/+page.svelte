@@ -115,6 +115,7 @@
     _renderer.toneMapping = THREE.ACESFilmicToneMapping;
     _renderer.toneMappingExposure = 0.6;
     camera.position.set(4, 3, 3);
+    // camera.near = 1;
 
     canvasContainer.appendChild(renderer.domElement);
 
