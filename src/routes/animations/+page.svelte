@@ -175,7 +175,7 @@
         ></div>
 
         <h3
-            class="text-white text-2xl font-black tracking-widest uppercase animate-pulse"
+            class="text-black text-2xl font-black tracking-widest uppercase animate-pulse"
         >
             Loading Animasi
         </h3>
