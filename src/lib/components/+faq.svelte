@@ -1,5 +1,4 @@
 <script lang="ts">
-    // Menggunakan Svelte 5 Runes untuk mendefinisikan properti input
     let { q = "", a = "" } = $props();
 </script>
 

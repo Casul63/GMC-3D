@@ -8,22 +8,32 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import Modal from "$lib/components/+modal.svelte";
-  import Navbar from "$lib/components/+navbar.svelte";
+  import Icon from "$lib/components/Icon.svelte";
 
   let config = $state({
     brightness: 1.5,
     hemiIntensity: 0.8,
     fov: 75,
+    cameraHeightLock: true,
+    minY: 0.3,
   });
   let scene = $state<THREE.Scene | null>(null);
   let tools = $state<THREE.Group | null>(null);
   let renderer = $state<THREE.WebGLRenderer | null>(null);
   let dirLight = $state<THREE.DirectionalLight | null>(null);
   let hemiLight = $state<THREE.HemisphereLight | null>(null);
+
   let camera = $state<THREE.PerspectiveCamera | null>(null);
+  let resetCamera = $state<boolean>(false);
+  let cameraPosition = $state({ x: 0, y: 0, z: 0 });
+
   let point = $state<THREE.Vector2 | null>(null);
   let raycaster = $state<THREE.Raycaster | null>(null);
-  let controls: any = null;
+  let controls = $state<OrbitControls | null>(null);
+
+  let intersectsLive = $state("");
+  let targetDistance = $state<number | null>(null);
+  let lastHitWall: THREE.Object3D | null = null;
 
   let canvasContainer: HTMLDivElement;
 
@@ -55,30 +65,20 @@
       camera.fov = config.fov;
       camera.updateProjectionMatrix();
     }
+
+    if (controls) {
+      if (config.cameraHeightLock) {
+        // Mengunci kamera agar maksimal sejajar lantai (90 derajat)
+        controls.maxPolarAngle = Math.PI / 2 - 0.01; // Dikurangi sedikit agar tidak bergetar saat menyentuh batas bawah
+      } else {
+        // Mengembalikan ke pengaturan bawaan (bisa berputar ke bawah objek)
+        controls.maxPolarAngle = Math.PI;
+      }
+    }
   });
 
   onMount(() => {
     const _scene = new THREE.Scene();
-
-    // const gradientCanvas = document.createElement("canvas");
-    // gradientCanvas.width = window.innerWidth;
-    // gradientCanvas.height = window.innerHeight;
-    // const context = gradientCanvas.getContext("2d");
-    // if (context) {
-    //   const gradient = context.createLinearGradient(
-    //     0,
-    //     0,
-    //     0,
-    //     gradientCanvas.height,
-    //   );
-    //   gradient.addColorStop(0, "#0391ff");
-    //   gradient.addColorStop(1, "#29a2ff");
-
-    //   context.fillStyle = gradient;
-    //   context.fillRect(0, 0, gradientCanvas.width, gradientCanvas.height);
-    // }
-    // const backgroundTexture = new THREE.CanvasTexture(gradientCanvas);
-    // _scene.background = backgroundTexture;
 
     const _renderer = new THREE.WebGLRenderer();
     const _camera = new THREE.PerspectiveCamera(
@@ -93,8 +93,10 @@
       config.hemiIntensity,
     );
     const _dirLight = new THREE.DirectionalLight(0xffffff, config.brightness);
-    const controls = new OrbitControls(_camera, _renderer.domElement);
-    controls.enableDamping = true;
+    const _controls = new OrbitControls(_camera, _renderer.domElement);
+    _controls.enableDamping = true;
+
+    controls = _controls;
     const _raycaster = new THREE.Raycaster();
     const _point = new THREE.Vector2();
 
@@ -105,6 +107,9 @@
     dirLight = _dirLight;
     raycaster = _raycaster;
     point = _point;
+
+    const debugRaycaster = new THREE.Raycaster();
+    const centerScreen = new THREE.Vector2(0, 0);
 
     scene.add(hemiLight);
     scene.add(dirLight);
@@ -135,14 +140,22 @@
       (gltf) => {
         _scene.add(gltf.scene);
 
-        const _toolsGroup = gltf.scene.getObjectByName("Tools");
+        const toolsGroup = gltf.scene.getObjectByName("Tools");
+        const wall = gltf.scene.getObjectByName("Wall");
 
-        if (_toolsGroup) {
-          tools = _toolsGroup as THREE.Group;
+        // if (wall) {
+        //   wall.traverse((child) => {
+        //     child.raycast = () => {};
+        //   });
+        // }
+
+        if (toolsGroup) {
+          tools = toolsGroup as THREE.Group;
           console.log("Tools group is true");
         } else {
           console.warn("Tools group not found");
         }
+
         console.log("Tools:", _scene.getObjectByName("Tools")?.children);
         console.log("Struktur Model:");
         console.log(dumpObject(gltf.scene).join("\n"));
@@ -183,8 +196,79 @@
     }
 
     const renderLoop = () => {
-      controls.update();
+      _controls.update();
+
+      if (resetCamera) {
+        _camera.position.set(4, 3, 3);
+        resetCamera = false;
+      }
+
+      if (_scene && _camera) {
+        debugRaycaster.setFromCamera(centerScreen, _camera);
+        const liveHits = debugRaycaster.intersectObjects(_scene.children, true);
+
+        if (liveHits.length > 0) {
+          const closestHit = liveHits[0];
+          intersectsLive =
+            closestHit.object.parent?.name || `[${closestHit.object.type}]`;
+          targetDistance = closestHit.distance;
+
+          let currentWallGroup: THREE.Object3D | null = null;
+          if (closestHit.object.name === "Wall") {
+            currentWallGroup = closestHit.object;
+          } else {
+            closestHit.object.traverseAncestors((ancestor) => {
+              if (ancestor.name === "Wall") {
+                currentWallGroup = ancestor;
+              }
+            });
+          }
+
+          if (currentWallGroup) {
+            const isTooClose = closestHit.distance < 1.5;
+
+            if (lastHitWall && lastHitWall !== currentWallGroup) {
+              setWallOpacity(lastHitWall, 1.0, false);
+            }
+
+            setWallOpacity(
+              currentWallGroup,
+              isTooClose ? 0.1 : 1.0,
+              isTooClose,
+            );
+            lastHitWall = currentWallGroup;
+          } else {
+            if (lastHitWall) {
+              setWallOpacity(lastHitWall, 1.0, false);
+              lastHitWall = null;
+            }
+          }
+        } else {
+          intersectsLive = "Tidak ada objek";
+          targetDistance = null;
+          if (lastHitWall) {
+            setWallOpacity(lastHitWall, 1.0, false);
+            lastHitWall = null;
+          }
+        }
+      }
+
+      if (config.cameraHeightLock && _camera.position.y < config.minY) {
+        _camera.position.y = config.minY;
+        _controls.enablePan = false;
+        _controls.update();
+      }
+      if (config.cameraHeightLock && _camera.position.y > config.minY) {
+        _controls.enablePan = true;
+        _controls.update();
+      }
+
       _renderer.render(_scene, _camera);
+      cameraPosition = {
+        x: _camera.position.x,
+        y: _camera.position.y,
+        z: _camera.position.z,
+      };
     };
 
     _renderer.setAnimationLoop(renderLoop);
@@ -213,6 +297,27 @@
       _scene.clear();
     };
   });
+
+  function setWallOpacity(
+    wallGroup: THREE.Object3D,
+    opacityValue: number,
+    isTransparent: boolean,
+  ) {
+    wallGroup.traverse((node) => {
+      if (node instanceof THREE.Mesh) {
+        if (!node.material._isCloned) {
+          node.material = node.material.clone();
+          node.material._isCloned = true;
+        }
+
+        const mat = node.material as THREE.MeshStandardMaterial;
+        mat.transparent = isTransparent;
+        mat.opacity = opacityValue;
+
+        mat.needsUpdate = true;
+      }
+    });
+  }
 
   function preventContextMenu(event: MouseEvent) {
     event.preventDefault();
@@ -269,20 +374,24 @@
     raycaster.setFromCamera(point, camera);
     const intersects = raycaster.intersectObjects(scene.children, true);
 
-    if (intersects.length > 0) {
-      const intersectedObject = intersects[0].object;
-
+    for (const intersect of intersects) {
+      const intersectedObject = intersect.object;
+      if (intersectedObject.name === "Wall") {
+        continue;
+      }
       if (intersectedObject.parent?.name === "Tools") {
         return intersectedObject;
       }
-
       let foundTool: THREE.Object3D | null = null;
-      intersectedObject.traverseAncestors((tool) => {
-        if (tool.parent?.name === "Tools") {
-          foundTool = tool;
+      intersectedObject.traverseAncestors((ancestor) => {
+        if (ancestor.parent?.name === "Tools") {
+          foundTool = ancestor;
         }
       });
-      return foundTool;
+
+      if (foundTool) {
+        return foundTool;
+      }
     }
     return null;
   }
@@ -342,6 +451,22 @@
   }
 </script>
 
+<!-- Debug Div -->
+<!-- <div class="fixed bg-black/50 text-white bottom-10 left-10">
+  <p>
+    FOV: {config.fov}° | X: {cameraPosition.x.toFixed(2)}
+    Y: {cameraPosition.y.toFixed(2)}
+    Z: {cameraPosition.z.toFixed(2)}
+    Ray : {intersectsLive}
+
+    {#if targetDistance !== null}
+      Jarak ke Objek: {targetDistance.toFixed(2)}m
+    {:else}
+      Jarak ke Objek: -
+    {/if}
+  </p>
+</div> -->
+
 <div class="fixed top-18 left-6 z-100 flex flex-col items-end">
   <button
     onclick={() => (showHelp = !showHelp)}
@@ -380,45 +505,22 @@
 <div class="fixed top-18 right-6 z-90 flex flex-col items-end">
   <div class="flex gap-4">
     <button
+      onclick={() => {
+        resetCamera = true;
+      }}
+      class="flex items-center justify-center bg-white ml-auto w-12 h-12 rounded-full border-3 border-black text-2xl font-bold hover:scale-120 transition-all"
+    >
+      <Icon name="camera"></Icon>
+    </button>
+    <button
       onclick={revealTools}
       title={isHidden ? "Tampilkan semua alat" : "Semua alat terlihat"}
       class="flex items-center justify-center bg-white w-12 h-12 rounded-full border-3 border-black text-2xl font-bold hover:scale-120 transition-all shadow-lg"
     >
       {#if isHidden}
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke-width="2.5"
-          stroke="currentColor"
-          class="size-6 text-black"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88"
-          />
-        </svg>
+        <Icon name="eye"></Icon>
       {:else}
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke-width="2.5"
-          stroke="currentColor"
-          class="size-6 text-gray-400"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
-          />
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
-          />
-        </svg>
+        <Icon name="eye-off" size="size-6" color="text-black/50"></Icon>
       {/if}
     </button>
     <button
@@ -426,19 +528,11 @@
       onclick={() => (showSettings = !showSettings)}
       class="flex items-center justify-center bg-white ml-auto w-12 h-12 rounded-full border-3 border-black text-2xl font-bold hover:scale-120 transition-all"
     >
-      <svg
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        data-slot="icon"
-        aria-hidden="true"
-        class="size-8 ali text-black"
-      >
-        <path
-          d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
-          clip-rule="evenodd"
-          fill-rule="evenodd"
-        />
-      </svg>
+      {#if showSettings}
+        <Icon name="dropdown-active"></Icon>
+      {:else}
+        <Icon name="dropdown"></Icon>
+      {/if}
     </button>
   </div>
 
@@ -526,6 +620,19 @@
               bind:value={config.fov}
               class="w-full accent-red-600"
             />
+            <div class="flex items-center justify-between pt-2">
+              <span class="text-xs text-black">Batas Kamera</span>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  bind:checked={config.cameraHeightLock}
+                  class="sr-only peer"
+                />
+                <div
+                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"
+                ></div>
+              </label>
+            </div>
           </div>
         </section>
       </div>
